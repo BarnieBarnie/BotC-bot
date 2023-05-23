@@ -99,8 +99,12 @@ async def process_day_command(client: 'BotC', message: discord.Message, logger: 
     channel_dict = guild_database['voice_channels']
     channel_id_to_move_to = channel_dict['Town Square (main game)']
     channel_to_move_to = guild.get_channel(channel_id_to_move_to)
+    members_already_in_channel_to_move_to = {member.name for member in channel_to_move_to.members}
 
     for voice_channel in guild.voice_channels:
         for member in voice_channel.members:
+            if member.name in members_already_in_channel_to_move_to:
+                logger.info(f'Member {member.name} already in {channel_to_move_to.name}, skipping')
+                continue
             await member.move_to(channel_to_move_to)
-            logger.info(f'Moved {member.name} from {voice_channel.name}')
+            logger.info(f'Moved {member.name} to {channel_to_move_to}')
