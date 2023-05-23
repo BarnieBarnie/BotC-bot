@@ -3,7 +3,7 @@
 import discord
 from pathlib import Path
 import logging
-from BotC_bot import BotC
+from core.BotC_bot import BotC
 from datetime import datetime
 import sys
 
