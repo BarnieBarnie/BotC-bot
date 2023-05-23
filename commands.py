@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from BoTCT_bot import BotCT
+    from BotC_bot import BotC
 
 
 async def process_barnie_command(client: discord.Client, message: discord.Message, logger: logging.Logger):
@@ -26,7 +26,7 @@ async def process_barnie_command(client: discord.Client, message: discord.Messag
 
     await message.channel.send(barnie_string)
 
-async def process_create_town_command(client: 'BotCT', message: discord.Message, arguments: list[str], logger: logging.Logger):
+async def process_create_town_command(client: 'BotC', message: discord.Message, arguments: list[str], logger: logging.Logger):
     """
     Process the "create town" command and create a new town category channel.
     """
@@ -49,7 +49,7 @@ async def check_member_for_story_teller_role(message: discord.Message, logger: l
             return True
     return False
 
-async def process_night_command(client: 'BotCT', message: discord.Message, logger: logging.Logger):
+async def process_night_command(client: 'BotC', message: discord.Message, logger: logging.Logger):
     """
     Process the "night" command and move members to the night phase voice channels.
     """
@@ -86,7 +86,7 @@ async def process_night_command(client: 'BotCT', message: discord.Message, logge
         except discord.errors.Forbidden:
             logger.error(f'Could not move {member.name}, got 403 forbidden')
 
-async def process_day_command(client: 'BotCT', message: discord.Message, logger: logging.Logger):
+async def process_day_command(client: 'BotC', message: discord.Message, logger: logging.Logger):
     """
     Process the "day" command and move members to the town square voice channel.
     """

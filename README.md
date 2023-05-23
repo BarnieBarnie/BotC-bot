@@ -1,4 +1,4 @@
-# BotCT-bot
+# BotC-bot
 Discord bot to play Blood on the Clock Tower
 
 ### Invite url

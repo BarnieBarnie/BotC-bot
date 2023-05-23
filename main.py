@@ -3,7 +3,7 @@
 import discord
 from pathlib import Path
 import logging
-from BoTCT_bot import BotCT
+from BotC_bot import BotC
 from datetime import datetime
 import sys
 
@@ -51,7 +51,7 @@ def main():
     intents.message_content = True
 
     # Initialize bot client
-    client = BotCT(intents=intents, logger=logger, database_dir=DATABASE_DIR)
+    client = BotC(intents=intents, logger=logger, database_dir=DATABASE_DIR)
 
     # Run the bot with the provided token
     client.run(TOKEN, log_handler=None)

@@ -14,7 +14,7 @@ from pathlib import Path
 import json
 
 
-class BotCT(discord.Client):
+class BotC(discord.Client):
     def __init__(self, *, intents: Intents, logger: logging.Logger, database_dir: Path, **options: Any) -> None:
         super().__init__(intents=intents, **options)
         self.logger = logger
