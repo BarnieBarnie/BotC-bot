@@ -45,10 +45,17 @@ if __name__ == '__main__':
     logger = get_logger('BotC', LOG_FILE_PATH)
 
     # Configure discord logger
+    discord_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s', '%d-%m-%Y %H:%M:%S')
     discord_logger = logging.getLogger('discord')
-    logging.getLogger('discord.http').setLevel(logging.INFO)
     discord_logger.setLevel(logging.INFO)
+
     discord_file_handler = logging.FileHandler(filename=LOG_FILE_PATH)
-    discord_file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s', '%d-%m-%Y %H:%M:%S'))
+    discord_file_handler.setFormatter(discord_formatter)
     discord_logger.addHandler(discord_file_handler)
+
+    discord_console_handler = logging.StreamHandler()
+    discord_console_handler.setFormatter(discord_formatter)
+    discord_console_handler.setLevel(logging.ERROR)
+    discord_logger.addHandler(discord_console_handler)
+    logging.getLogger('discord.http').setLevel(logging.INFO)
     main()

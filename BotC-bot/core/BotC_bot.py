@@ -13,8 +13,6 @@ from core.commands import (
     process_linda_command,
 )
 from pathlib import Path
-import json
-from utils.log import get_logger
 from core.database import Database
 
 logger = logging.getLogger('BotC')
