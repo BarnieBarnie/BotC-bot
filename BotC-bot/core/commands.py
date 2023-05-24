@@ -51,6 +51,42 @@ async def process_c4rrotz_command(message: discord.Message):
 
     await message.channel.send(c4rrotz_string)
 
+async def process_linda_command(message: discord.Message):
+    """
+    Process the "linda" command and send a linda string in the channel.
+    """
+    linda_string = """
+    ```
+                 .88888888:.
+                88888888.88888.
+              .8888888888888888.
+              888888888888888888
+              88' _`88'_  `88888
+              88 88 88 88  88888
+              88_88_::_88_:88888
+              88:::,::,:::::8888
+              88`:::::::::'`8888
+             .88  `::::'    8:88.
+            8888            `8:888.
+          .8888'             `888888.
+         .8888:..  .::.  ...:'8888888:.
+        .8888.'     :'     `'::`88:88888
+       .8888        '         `.888:8888.
+      888:8         .           888:88888
+    .888:88        .:           888:88888:
+    8888888.       ::           88:888888
+    `.::.888.      ::          .88888888
+   .::::::.888.    ::         :::`8888'.:.
+  ::::::::::.888   '         .::::::::::::
+  ::::::::::::.8    '      .:8::::::::::::.
+ .::::::::::::::.        .:888:::::::::::::
+ :::::::::::::::88:.__..:88888:::::::::::'
+  `'.:::::::::::88888888888.88:::::::::'
+        `':::_:' -- '' -'-' `':_::::'`
+```
+"""
+    await message.channel.send(linda_string)
+
 async def process_create_town_command(client: 'BotC', message: discord.Message, arguments: list[str]):
     """
     Process the "create town" command and create a new town category channel.

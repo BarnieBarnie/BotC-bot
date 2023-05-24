@@ -10,6 +10,7 @@ from core.commands import (
     process_night_command,
     process_day_command,
     process_c4rrotz_command,
+    process_linda_command,
 )
 from pathlib import Path
 import json
@@ -66,5 +67,8 @@ class BotC(discord.Client):
 
                 case 'c4rrotz':
                     await process_c4rrotz_command(message)
+
+                case 'linda':
+                    await process_linda_command(message)
 
         self.databases[message.guild.name].check_cache()
