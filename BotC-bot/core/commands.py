@@ -7,10 +7,11 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from BotC_bot import BotC
+    from core.BotC_bot import BotC
 
+logger = logging.getLogger('BotC')
 
-async def process_barnie_command(client: discord.Client, message: discord.Message, logger: logging.Logger):
+async def process_barnie_command(message: discord.Message):
     """
     Process the "barnie" command and send a barnie string in the channel.
     """
@@ -26,7 +27,32 @@ async def process_barnie_command(client: discord.Client, message: discord.Messag
 
     await message.channel.send(barnie_string)
 
-async def process_create_town_command(client: 'BotC', message: discord.Message, arguments: list[str], logger: logging.Logger):
+async def process_c4rrotz_command(message: discord.Message):
+    """
+    Process the "c4rrotz" command and send a c4rrotz string in the channel.
+    """
+    c4rrotz_string = '''
+    ```
+      /|\\
+     |||||
+     |||||
+ /\  |||||
+|||| |||||
+|||| |||||  /\\
+|||| ||||| ||||
+ \|`-'|||| ||||
+  \__ |||| ||||
+     ||||`-'|||
+     |||| ___/
+     |||||
+     |||||
+-----------------
+```
+'''
+
+    await message.channel.send(c4rrotz_string)
+
+async def process_create_town_command(client: 'BotC', message: discord.Message, arguments: list[str]):
     """
     Process the "create town" command and create a new town category channel.
     """
@@ -39,7 +65,7 @@ async def process_create_town_command(client: 'BotC', message: discord.Message, 
     await message.channel.send(f'Creating town "{town_name}"')
     await client.guilds[0].create_category_channel(town_name)
 
-async def check_member_for_story_teller_role(message: discord.Message, logger: logging.Logger):
+async def check_member_for_story_teller_role(message: discord.Message):
     """
     Check if a member has the "Storyteller" role.
     """
@@ -49,11 +75,11 @@ async def check_member_for_story_teller_role(message: discord.Message, logger: l
             return True
     return False
 
-async def process_night_command(client: 'BotC', message: discord.Message, logger: logging.Logger):
+async def process_night_command(client: 'BotC', message: discord.Message):
     """
     Process the "night" command and move members to the night phase voice channels.
     """
-    if not await check_member_for_story_teller_role(message, logger):
+    if not await check_member_for_story_teller_role(message):
         await message.channel.send(f'User {message.author.name} does not have role: Storyteller!')
         return
     guild = message.guild
@@ -86,11 +112,11 @@ async def process_night_command(client: 'BotC', message: discord.Message, logger
         except discord.errors.Forbidden:
             logger.error(f'Could not move {member.name}, got 403 forbidden')
 
-async def process_day_command(client: 'BotC', message: discord.Message, logger: logging.Logger):
+async def process_day_command(client: 'BotC', message: discord.Message):
     """
     Process the "day" command and move members to the town square voice channel.
     """
-    if not await check_member_for_story_teller_role(message, logger):
+    if not await check_member_for_story_teller_role(message):
         await message.channel.send(f'User {message.author.name} does not have role: Storyteller!')
         return
     guild = message.guild
