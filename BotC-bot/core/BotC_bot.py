@@ -45,6 +45,13 @@ class BotC(discord.Client):
 
         message_content: str = message.content
 
+        # check if this guild is known, if not create a new database
+        # for new guilds that invite the bot for the first time
+        if message.guild.id not in self.guilds_dict:
+            logger.info(f'Guild {message.guild.name} ({message.guild.id}) is not known, creating database for guild')
+            self.databases[message.guild.name] = Database(self.database_dir / f'{message.guild.name}.json', message.guild)
+
+        # check if the message is a command
         if message_content.startswith('/'):
             command_string = message_content[1:]
             arguments = command_string.split(' ')
