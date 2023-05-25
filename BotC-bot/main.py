@@ -6,16 +6,30 @@ import logging
 from core.BotC_bot import BotC
 from datetime import datetime
 from utils.log import get_logger
+import argparse
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-t", "--token", type=str, default=None, help="Bot token")
+    parser.add_argument("-f", "--tokenfile", default=None, help="Bot token file")
+    return parser.parse_args()
 
 def main():
-    # Check if token file exists
-    if not TOKEN_PATH.exists():
-        TOKEN_PATH.write_text('DISCORD_TOKEN')
-        logger.error(f'No token.txt found! Created the token.txt file. Add your token at {TOKEN_PATH.absolute()}')
-        exit(1)
+    arguments = parse_args()
 
-    # Read token from file
-    TOKEN = TOKEN_PATH.read_text()
+    if arguments.tokenfile:
+        TOKEN = Path(arguments.tokenfile).absolute().read_text()
+    elif arguments.token:
+        TOKEN = arguments.token
+    else:
+        # Check if token file exists
+        if not TOKEN_PATH.exists():
+            TOKEN_PATH.write_text('DISCORD_TOKEN')
+            logger.error(f'No token.txt found! Add your token at {TOKEN_PATH.absolute()} or use the -t or -f option.')
+            exit(1)
+
+        # Read token from file
+        TOKEN = TOKEN_PATH.read_text()
 
     # Configure Discord intents
     intents = discord.Intents.default()
@@ -26,7 +40,6 @@ def main():
 
     # Run the bot with the provided token
     client.run(TOKEN, log_handler=None)
-
 
 if __name__ == '__main__':
     # date string

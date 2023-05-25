@@ -5,6 +5,7 @@ import discord
 import logging
 import json
 from datetime import datetime, timedelta
+import time
 
 logger = logging.getLogger('BotC')
 
@@ -67,11 +68,18 @@ class Database:
         Check if the guild has been cached within the last minute.
         """
         logger.info(f'checking cache for {self.guild_name}')
+        start = time.perf_counter()
         now = datetime.now()
         last_cached = datetime.strptime(self.database[self.guild_name]['last_cached'], '%d-%m-%YT%H:%M:%S')
         delta: timedelta = now - last_cached
         if delta.seconds > 60:
+            start_cache_renew = time.perf_counter()
             logger.info(f'cache older than 1 minute ({delta.seconds}), renewing state for {self.guild_name}')
             self.get_state()
+            end_cache_renew = time.perf_counter()
+            cache_renew_took = end_cache_renew - start_cache_renew
+            logger.info(f'cache renewal took {cache_renew_took:.3f}')
             return
-        logger.info(f'cache is up to date for {self.guild_name} {delta.seconds}s old')
+        end = time.perf_counter()
+        took = end - start
+        logger.info(f'cache is up to date for {self.guild_name} {delta.seconds}s old, validation took {took:.3f}s')
