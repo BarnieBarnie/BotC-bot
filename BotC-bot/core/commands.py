@@ -3,6 +3,10 @@
 # commands.py
 
 import discord
+from discord.ext import commands
+from discord.ui import View
+from core.buttons import NightButton, DayButton
+from utils.helpers import check_member_for_story_teller_role
 import logging
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -10,7 +14,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('BotC')
 
-async def process_barnie_command(message: discord.Message):
+@commands.command('botc')
+async def botc(ctx: commands.Context) -> None:
+    member = ctx.author
+    is_story_teller = await check_member_for_story_teller_role(member)
+    disabled = not is_story_teller
+    logger.info(f'{member.name} issued the "botc" command, disabled={disabled}, is_story_teller={is_story_teller}')
+    view = View()
+    view.add_item(NightButton("Night", disabled=disabled))
+    view.add_item(DayButton("Day", disabled=disabled))
+    await ctx.send("Select an action", view=view)
+
+@commands.command('barnie')
+async def barnie(ctx: commands.Context) -> None:
     """
     Process the "barnie" command and send a barnie string in the channel.
     """
@@ -24,9 +40,10 @@ async def process_barnie_command(message: discord.Message):
     ▔▏┊▔▔▔┊┃╱▔▏
     '''
 
-    await message.channel.send(barnie_string)
+    await ctx.channel.send(barnie_string)
 
-async def process_c4rrotz_command(message: discord.Message):
+@commands.command('c4rrotz')
+async def c4rrotz(ctx: commands.Context) -> None:
     """
     Process the "c4rrotz" command and send a c4rrotz string in the channel.
     """
@@ -49,9 +66,10 @@ async def process_c4rrotz_command(message: discord.Message):
 ```
 '''
 
-    await message.channel.send(c4rrotz_string)
+    await ctx.channel.send(c4rrotz_string)
 
-async def process_linda_command(message: discord.Message):
+@commands.command('linda')
+async def linda(ctx: commands.Context) -> None:
     """
     Process the "linda" command and send a linda string in the channel.
     """
@@ -85,7 +103,7 @@ async def process_linda_command(message: discord.Message):
         `':::_:' -- '' -'-' `':_::::'`
 ```
 """
-    await message.channel.send(linda_string)
+    await ctx.channel.send(linda_string)
 
 async def process_create_town_command(client: 'BotC', message: discord.Message, arguments: list[str]):
     """
@@ -103,61 +121,6 @@ async def process_create_town_command(client: 'BotC', message: discord.Message, 
     await message.guild.create_category_channel(town_name)
     logger.info(f'Created town "{town_name}"')
     database.get_state()
-
-async def check_member_for_story_teller_role(message: discord.Message):
-    """
-    Check if a member has the "Storyteller" role.
-    """
-    member = message.author
-    for role in member.roles:
-        if role.name == 'Storyteller':
-            return True
-    return False
-
-async def process_night_command(client: 'BotC', message: discord.Message):
-    """
-    Process the "night" command and move members to the night phase voice channels.
-    """
-    if not await check_member_for_story_teller_role(message):
-        logger.warning(f'User {message.author.name} does not have role: Storyteller!')
-        await message.channel.send(f'User {message.author.name} does not have role: Storyteller!')
-        return
-    guild = message.guild
-    database = client.databases[guild.name]
-    guild_database = database[guild.name]
-    channel_dict = guild_database['voice_channels']
-    role_dict = guild_database['roles']
-    category_dict = guild_database['categories']
-    channel_id_to_move_from = channel_dict['Town Square (main game)']
-    channel_to_move_from = guild.get_channel(channel_id_to_move_from)
-    role_id_to_move = role_dict['Townsfolk']
-
-    members_to_move = []
-    for member in channel_to_move_from.members:
-        if member.get_role(role_id_to_move):
-            members_to_move.append(member)
-
-    night_phase_category_id = category_dict['Nacht Fase']
-    channels_to_move_to = []
-    for voice_channel in guild.voice_channels:
-        if voice_channel.category_id == night_phase_category_id:
-            channels_to_move_to.append(voice_channel)
-    
-    logger.info(f'Moving {len(members_to_move)} members to the night phase')
-    member: discord.Member
-    members_not_moved = []
-    for member in members_to_move:
-        try:
-            channel_to_move_to = channels_to_move_to.pop()
-            await member.move_to(channel_to_move_to)
-            logger.info(f'Moved {member.name} to {channel_to_move_to}')
-        except discord.errors.Forbidden:
-            logger.error(f'Could not move {member.name}, got 403 forbidden, bot has unsificient permissions')
-            members_not_moved.append(member)
-    if members_not_moved:
-        member_names = ', '.join([member.name for member in members_not_moved])        
-        await message.channel.send(f'Could not move [{member_names}], bot has unsificient permissions')
-        logger.error(f'Could not move [{member_names}], bot has unsificient permissions')
 
 async def process_day_command(client: 'BotC', message: discord.Message):
     """

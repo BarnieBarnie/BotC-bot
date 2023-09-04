@@ -7,6 +7,7 @@ from core.BotC_bot import BotC
 from datetime import datetime
 from utils.log import get_logger
 import argparse
+from core.commands import botc, barnie, c4rrotz, linda
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -35,11 +36,15 @@ def main():
     intents = discord.Intents.default()
     intents.message_content = True
 
-    # Initialize bot client
-    client = BotC(intents=intents, logger=logger, database_dir=DATABASE_DIR)
+    # Initialize bot
+    bot = BotC(intents=intents, database_dir=DATABASE_DIR)
+    bot.add_command(botc)
+    bot.add_command(barnie)
+    bot.add_command(c4rrotz)
+    bot.add_command(linda)
 
     # Run the bot with the provided token
-    client.run(TOKEN, log_handler=None)
+    bot.run(TOKEN)
 
 if __name__ == '__main__':
     # date string
