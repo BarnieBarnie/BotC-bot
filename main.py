@@ -102,8 +102,13 @@ class GameControls(discord.ui.View):
         button_view = button.view
         if not is_owner(interaction, button_view.id):
             return
+        user = interaction.user
+        guild = interaction.guild
+        database = databases.get(user.display_name)
+        storyteller_role = guild.get_role(database.storyteller_role_id)
+        await user.remove_roles(storyteller_role)
         button_view.clear_items()
-        databases.pop(interaction.user.display_name)
+        databases.pop(user.display_name)
         await interaction.response.edit_message(content='Game ended', view=self)
         
 
@@ -145,7 +150,8 @@ async def on_ready():
 @client.tree.command()
 async def game(interaction: discord.Interaction):
     """Gives storyteller buttons to manage the game with"""
-    game_owner = interaction.user.display_name
+    user = interaction.user
+    game_owner = user.display_name
     if game_owner in databases:
         await interaction.response.send_message(f'You already have a running game, first quit the other game')
         return
@@ -153,6 +159,23 @@ async def game(interaction: discord.Interaction):
     databases[game_owner] = database
     view = GameControls()
     database.view_id = view.id
+    guild = interaction.guild
+    roles = guild.roles
+    storyteller_role = None
+    for role in roles:
+        if role.name == 'Storyteller':
+            storyteller_role = role
+    if not storyteller_role:
+        logger.warning(f"No Storryteller role found! Adding now...")
+        storyteller_role = await guild.create_role(name='Storyteller')
+    database.storyteller_role_id = storyteller_role.id
+    user_has_story_teller_role = False
+    for role in user.roles:
+        if role.name == 'Storyteller':
+            user_has_story_teller_role = True
+            break
+    if not user_has_story_teller_role:
+        await user.add_roles(storyteller_role)
     await interaction.response.send_message(f"Game commands for {game_owner}'s game", view=view)
 
 @client.tree.command()
@@ -215,11 +238,19 @@ async def create_game_channels(interaction: discord.Interaction, amount_of_playe
         await day_category.create_voice_channel(channel_name)
         logger.debug(f"Created {channel_name} in {day_category_name}")
 
+    overwrites = {
+    guild.default_role: discord.PermissionOverwrite(view_channel=False),
+    discord.utils.get(guild.roles, 'Storyteller'): discord.PermissionOverwrite(view_channel=True),
+    discord.utils.get(guild.roles, 'Admin'): discord.PermissionOverwrite(view_channel = True)
+    # guild.me: discord.PermissionOverwrite(read_messages=True)
+    }
+
+
     night_category = await guild.create_category(night_category_name)
     logger.info(f"Created {night_category_name} on {guild.name} for {command_caller}'s game")
 
     for channel_name in random_night_channel_names:
-        await night_category.create_voice_channel(channel_name, user_limit=0)
+        await night_category.create_voice_channel(channel_name, overwrites=overwrites)
         logger.debug(f"Created {channel_name} in {night_category_name}")
 
 @client.tree.command()

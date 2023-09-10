@@ -9,6 +9,7 @@ class Database:
         self.game_name = f"{self.owner}'s game"
         self.view_id = None
         self.linked_objects = False
+        self.storyteller_role_id = None
         self.players: dict = {}
         self.day_category = {}
         self.night_category = {}
