@@ -8,6 +8,7 @@ class Database:
         self.path = DATABASE_DIR / f'{self.filename}.json'
         self.game_name = f"{self.owner}'s game"
         self.view_id = None
+        self.linked_objects = False
         self.players: dict = {}
         self.day_category = {}
         self.night_category = {}

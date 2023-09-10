@@ -28,6 +28,13 @@ class GameControls(discord.ui.View):
         if not is_owner(interaction, button.view.id):
             return
         database = databases.get(interaction.user.display_name)
+        if not database.linked_objects:
+            button.label = 'No categories or players linked to this game yet! Run /link_to_game'
+            await interaction.response.edit_message(view=self)
+            time.sleep(1)
+            button.label = 'Day'
+            await interaction.followup.edit_message(interaction.message.id, view=self)
+            return
         button.label = 'Moving players...'
         await interaction.response.edit_message(view=self)
         guild = interaction.guild
@@ -50,6 +57,13 @@ class GameControls(discord.ui.View):
         if not is_owner(interaction, button.view.id):
             return
         database = databases.get(interaction.user.display_name)
+        if not database.linked_objects:
+            button.label = 'No categories or players linked to this game yet! Run /link_to_game'
+            await interaction.response.edit_message(view=self)
+            time.sleep(1)
+            button.label = 'Night'
+            await interaction.followup.edit_message(interaction.message.id, view=self)
+            return
         button.label = 'Moving players...'
         await interaction.response.edit_message(view=self)
         guild = interaction.guild
@@ -141,6 +155,7 @@ async def link_to_game(interaction: discord.Interaction, channel_with_players: d
     logger.info(f'Linking "{night_category.name}" (night) to {database.game_name}')
     database.night_category = {"name": night_category.name, "id": night_category.id, "children": [(channel.name, channel.id) for channel in night_category.voice_channels]}
     database.find_town_square()
+    database.linked_objects = True
     database.save_to_file()
     await interaction.response.send_message(f'Linked {member_count} players, "{day_category.name}" category as day and "{night_category.name}" category as night to your game')
 
