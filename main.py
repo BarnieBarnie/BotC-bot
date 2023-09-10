@@ -6,6 +6,7 @@ import time
 from database import Database
 from global_vars import SCRIPT_DIR, ROOMS, ROOMS_COUNT
 import random
+import asyncio
 
 TOKEN_PATH = SCRIPT_DIR / 'token.txt'
 TOKEN = load_token_from_file(TOKEN_PATH)
@@ -40,6 +41,43 @@ def dict_to_str(dict: dict) -> str:
         for value in values:
             string += f'  - {value}\n'
     return string
+
+class Timer:
+    def __init__(self, time_to_sleep: int, channel_to_notify: discord.TextChannel, day_category: discord.CategoryChannel, user_to_ignore: discord.User, channel_to_move_to: discord.VoiceChannel) -> None:
+        self.time_to_sleep = time_to_sleep
+        self.cancelled = False
+        self.channel_to_notify = channel_to_notify
+        self.day_category = day_category
+        self.user_to_ignore = user_to_ignore
+        self.channel_to_move_to = channel_to_move_to
+
+    async def run(self):
+        while self.time_to_sleep > 0 and not self.cancelled:
+            logger.info(f'Sleeping for another second... {self.time_to_sleep} left')
+            if self.time_to_sleep % 30 == 0:
+                logger.info(f'Notifing {self.channel_to_notify.name}')
+                await self.channel_to_notify.send(content=f'You have {self.time_to_sleep / 60:.1f} minutes before voting!', delete_after=29)
+            await asyncio.sleep(1)
+            self.time_to_sleep -= 1
+        await self.finish()
+    
+    async def cancel(self):
+        self.cancelled = True
+        await self.channel_to_notify.send(content=f'Timer was cancelled!', delete_after=10)
+        logger.warning(f'Timer was cancelled!')
+
+    async def finish(self):
+        if self.cancelled:
+            return
+        for channel in self.day_category.voice_channels:
+            if channel == self.channel_to_move_to:
+                continue
+            for member in channel.members:
+                if member == self.user_to_ignore:
+                    continue
+                await member.move_to(self.channel_to_move_to)
+
+        
 
 class GameControls(discord.ui.View):
 
@@ -97,6 +135,29 @@ class GameControls(discord.ui.View):
         button.label = 'Night'
         await interaction.followup.edit_message(interaction.message.id, view=self)
 
+    @discord.ui.button(label='Cancel timer', style=discord.ButtonStyle.red)
+    async def cancel_timer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        button_view = button.view
+        if not is_owner(interaction, button_view.id):
+            return
+        user = interaction.user
+        database: Database = databases.get(user.display_name)
+        timer: Timer = database.timer
+        if not timer:
+            button.label = 'No timer found!'
+            await interaction.response.edit_message(view=self)
+            time.sleep(3)
+            button.label = 'Cancel timer'
+            await interaction.followup.edit_message(interaction.message.id, view=self)
+            return
+        button.label = 'Timer cancelled!'
+        await interaction.response.edit_message(view=self)
+        await timer.cancel()
+        time.sleep(3)
+        button.label = 'Cancel timer'
+        await interaction.followup.edit_message(interaction.message.id, view=self)
+        
+
     @discord.ui.button(label='Quit game', style=discord.ButtonStyle.red)
     async def quit(self, interaction: discord.Interaction, button: discord.ui.Button):
         button_view = button.view
@@ -110,7 +171,27 @@ class GameControls(discord.ui.View):
         button_view.clear_items()
         databases.pop(user.display_name)
         await interaction.response.edit_message(content='Game ended', view=self)
-        
+
+    @discord.ui.select(min_values=1, max_values=1, options=[discord.SelectOption(label=f'{i*0.5} minutes') for i in range(4,27)], placeholder='Select time players have until vote')
+    async def timer(self, interaction: discord.Interaction, select: discord.ui.Select):
+        select_view: discord.ui.View = select.view
+        if not is_owner(interaction, select_view.id):
+            return
+        user = interaction.user
+        selected_value = select.values[0]
+        logger.info(f"{user.display_name} started a timer of {selected_value} minutes")
+        time_to_sleep = float(selected_value.replace(' minutes', '')) * 60
+        logger.info(f"I got {time_to_sleep}:.2f seconds to sleep")
+        database: Database = databases.get(user.display_name)
+        await interaction.response.send_message(f'Will return players to Town Square after {selected_value} minutes', ephemeral=True, delete_after=3)
+        timer = Timer(time_to_sleep, database.game_chat_channel, interaction.guild.get_channel(database.day_category.get('id')), interaction.user, interaction.guild.get_channel(database.town_square[1]))
+        database.timer = timer
+        children = select_view.children
+        for child in children:
+            if isinstance(child, discord.ui.Select):
+                child.placeholder = 'Select time players have until vote'
+                await interaction.followup.edit_message(interaction.message.id, view=select_view)
+        await timer.run()
 
 class MyClient(discord.Client):
     def __init__(self, *, intents: discord.Intents):
@@ -185,7 +266,7 @@ async def link_to_game(interaction: discord.Interaction, channel_with_players: d
     if command_caller not in databases:
         await interaction.response.send_message(f"You do not have an active game, start one first with /game", ephemeral=True, delete_after=5)
         return
-    database = databases.get(command_caller)
+    database: Database = databases.get(command_caller)
     member_count = len(channel_with_players.members)
     for member in channel_with_players.members:
         logger.info(f"Linking {member.display_name} to {command_caller}'s game")
@@ -199,6 +280,7 @@ async def link_to_game(interaction: discord.Interaction, channel_with_players: d
     database.night_category = {"name": night_category.name, "id": night_category.id, "children": [(channel.name, channel.id) for channel in night_category.voice_channels]}
     database.find_town_square()
     database.linked_objects = True
+    database.game_chat_channel = discord.utils.get(day_category.text_channels, name='game-chat')
     database.save_to_file()
     await interaction.response.send_message(f'Linked {member_count} players, "{day_category.name}" category as day and "{night_category.name}" category as night to your game', ephemeral=True, delete_after=5)
 
@@ -227,7 +309,6 @@ async def create_game_channels(interaction: discord.Interaction, amount_of_playe
 """
     logger.debug(response_message)
 
-
     await interaction.response.send_message(response_message, ephemeral=True, delete_after=5)
 
     guild = interaction.guild
@@ -237,12 +318,14 @@ async def create_game_channels(interaction: discord.Interaction, amount_of_playe
     for channel_name in random_day_channel_names:
         await day_category.create_voice_channel(channel_name)
         logger.debug(f"Created {channel_name} in {day_category_name}")
+    await day_category.create_text_channel('game-chat')
+    logger.debug(f'Created "game-chat" in {day_category_name}')
 
     overwrites = {
     guild.default_role: discord.PermissionOverwrite(view_channel=False),
-    discord.utils.get(guild.roles, 'Storyteller'): discord.PermissionOverwrite(view_channel=True),
-    discord.utils.get(guild.roles, 'Admin'): discord.PermissionOverwrite(view_channel = True)
-    # guild.me: discord.PermissionOverwrite(read_messages=True)
+    discord.utils.get(guild.roles, name='Storyteller'): discord.PermissionOverwrite(view_channel=True, manage_channels=True),
+    discord.utils.get(guild.roles, name='BotC-bot'): discord.PermissionOverwrite(view_channel=True, manage_channels=True),
+    discord.utils.get(guild.roles, name='Admin'): discord.PermissionOverwrite(view_channel=True, manage_channels=True)
     }
 
 
@@ -263,5 +346,12 @@ async def delete_game_channels(interaction: discord.Interaction, day_category: d
             await channel.delete()
         logger.info(f"Deleting {category.name}")
         await category.delete()
+
+@client.tree.command()
+async def clear_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+    """Clears all messages from the channel"""
+    await interaction.response.send_message(f"Purging {channel.name}...", ephemeral=True, delete_after=5)
+    logger.info(f'Clearing {channel.name} of messages')
+    await channel.purge()
 
 client.run(TOKEN)

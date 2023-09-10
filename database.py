@@ -14,6 +14,8 @@ class Database:
         self.day_category = {}
         self.night_category = {}
         self.town_square = []
+        self.game_chat_channel = None
+        self.timer = None
 
     def to_dict(self):
         return {
