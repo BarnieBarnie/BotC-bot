@@ -31,6 +31,6 @@ class Database:
 
     def find_town_square(self):
         for channel in self.day_category['children']:
-            if channel[0] == 'Town Square (main game)':
+            if channel[0] == f"Town Square ({self.game_name})":
                 self.town_square = channel
                 return

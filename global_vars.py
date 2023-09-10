@@ -214,3 +214,4 @@ ROOMS = [
 	"Wine cellar",
 	"Wiring closet"
 ]
+ROOMS_COUNT = len(ROOMS)
