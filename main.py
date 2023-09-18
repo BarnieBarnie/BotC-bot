@@ -1,6 +1,12 @@
 import discord
 from logger import logger
-from utils import load_token_from_file, dict_to_str, pick_random_channel_names, get_storyteller_role, check_if_user_has_story_teller_role
+from utils import (
+    load_token_from_file, 
+    dict_to_str, 
+    pick_random_channel_names, 
+    get_storyteller_role, 
+    check_if_user_has_story_teller_role,
+    )
 from global_vars import SCRIPT_DIR, DATABASES
 from classes import MyClient, GameControls, Database
 
@@ -27,14 +33,14 @@ async def game(interaction: discord.Interaction):
     user = interaction.user
     game_owner = user.display_name
     if game_owner in DATABASES:
-        await interaction.response.send_message(f'You already have a running game, first quit the other game')
+        await interaction.response.send_message(f'You already have a running game, first quit the other game', ephemeral=True, delete_after=5)
         return
     database = Database(game_owner)
     DATABASES[game_owner] = database
-    view = GameControls()
+    view = GameControls(timeout=None)
     database.view_id = view.id
     guild = interaction.guild
-    storyteller_role = get_storyteller_role(interaction)
+    storyteller_role = get_storyteller_role(guild)
 
     if not storyteller_role:
         logger.warning(f"No Storryteller role found! Adding now...")

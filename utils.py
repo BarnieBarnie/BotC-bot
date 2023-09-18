@@ -46,8 +46,7 @@ def dict_to_str(dict: dict) -> str:
             string += f'  - {value}\n'
     return string
 
-def get_storyteller_role(interaction: discord.Interaction) -> discord.Role:
-    guild = interaction.guild
+def get_storyteller_role(guild: discord.Guild) -> discord.Role:
     roles = guild.roles
     storyteller_role = None
     for role in roles:
