@@ -28,6 +28,16 @@ async def on_ready():
         await client.tree.sync(guild=guild)
 
 @client.tree.command()
+async def spectate(interaction: discord.Interaction, user_to_spectate: discord.Member):
+    """Link yourself to another member, when they move channels you move with them"""
+    pass
+
+@client.tree.command()
+async def stop_spectate(interaction: discord.Interaction, user_to_stop_spectating: discord.Member):
+    """Unlink yourself from another member, you no longer move where they move"""
+    pass
+
+@client.tree.command()
 async def game(interaction: discord.Interaction):
     """Gives storyteller buttons to manage the game with"""
     user = interaction.user
