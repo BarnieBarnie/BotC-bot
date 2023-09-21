@@ -1,7 +1,8 @@
 from pathlib import Path
 from logger import logger
 import discord
-from global_vars import DATABASES, ROOMS_COUNT, ROOMS
+from global_vars import ROOMS_COUNT, ROOMS
+from database import Database
 import random
 
 def load_token_from_file(file: Path) -> str:
@@ -18,9 +19,9 @@ def load_token_from_file(file: Path) -> str:
 
 def is_owner(interaction: discord.Interaction, view_id: int) -> bool:
     user_that_clicked = interaction.user.display_name
-    database = DATABASES.get(user_that_clicked)
-    if database:
-        user_is_owner = True if view_id == database.view_id else False
+    database = Database(interaction.guild)
+    if user_that_clicked in database.games:
+        user_is_owner = True if database.games[user_that_clicked]["view_id"] == view_id else False
         if user_is_owner:
             return True
         logger.warning(f"{user_that_clicked} clicked on button it has no rights to!")
@@ -61,3 +62,6 @@ def check_if_user_has_story_teller_role(interaction: discord.Interaction) -> boo
             user_has_story_teller_role = True
             break
     return user_has_story_teller_role
+
+async def response(interaction: discord.Interaction, message: str):
+    await interaction.response.send_message(message, ephemeral=True, delete_after=10)

@@ -6,9 +6,12 @@ from utils import (
     pick_random_channel_names, 
     get_storyteller_role, 
     check_if_user_has_story_teller_role,
+    response,
     )
-from global_vars import SCRIPT_DIR, DATABASES
-from classes import MyClient, GameControls, Database
+from global_vars import SCRIPT_DIR, DOCUMENTATION_STRINGS
+from classes import MyClient, GameControls
+from database import Database
+from discord import app_commands
 
 TOKEN_PATH = SCRIPT_DIR / 'token.txt'
 TOKEN = load_token_from_file(TOKEN_PATH)
@@ -22,34 +25,86 @@ async def on_ready():
     logger.info(f'Logged in as {client.user} (ID: {client.user.id}), connected to {len(client.guilds)} guilds')
     logger.info('------')
     for guild in client.guilds:
+        logger.info(f'Setting up Database for {guild.name}')
+        database = Database(guild)
+        database.get_dict_from_guild()
         guild_name = guild.name
         logger.info(f"Copying commands to {guild_name}[{guild.id}]")
         client.tree.copy_global_to(guild=guild)
         await client.tree.sync(guild=guild)
 
+@client.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    database = Database(member.guild)
+    if member.display_name in database.linked_players:
+        slaves = database.linked_players[member.display_name]
+        for slave_name in slaves:
+            for member in before.channel.members:
+                if member.display_name == slave_name:
+                    logger.info(f"{slave_name} was in same channel as {member.display_name} moving {slave_name} to {after.channel.name}")
+                    await member.move_to(after.channel)
+                    return
+            logger.info(f"{slave_name} was not in same channel as {member.display_name} moving {slave_name} to {after.channel.name}")
+            slave = member.guild.get_member_named(slave_name)
+            await slave.move_to(after.channel)
+
 @client.tree.command()
 async def spectate(interaction: discord.Interaction, user_to_spectate: discord.Member):
     """Link yourself to another member, when they move channels you move with them"""
-    pass
+    database = Database(interaction.guild)
+    user = interaction.user
+    user_to_spectate_name = user_to_spectate.display_name
+    for master, slaves in database.linked_players.items():
+        for slave in slaves:
+            if slave == user.display_name:
+                await response(interaction, f'You are already spectating {master}! First unlink from {master}!')
+                return
+    if user_to_spectate_name in database.linked_players:
+        database.linked_players[user_to_spectate_name].append(user.display_name)
+        database.save()
+        await response(interaction, f'You are now spectating {user_to_spectate_name}, you will follow them around until you run /stop_spectate')
+        return
+
+    database.linked_players[user_to_spectate_name] = [user.display_name]
+    database.save()
+    await response(interaction, f'You are now spectating {user_to_spectate_name}, you will follow them around until you run /stop_spectate')
 
 @client.tree.command()
-async def stop_spectate(interaction: discord.Interaction, user_to_stop_spectating: discord.Member):
-    """Unlink yourself from another member, you no longer move where they move"""
-    pass
+async def stop_spectate(interaction: discord.Interaction):
+    """Unlink yourself from other members, you no longer move where they move"""
+    database = Database(interaction.guild)
+    user_display_name = interaction.user.display_name
+    found = False
+    for spectated, spectators in database.linked_players.items():
+        for spectator in spectators:
+            if spectator == user_display_name:
+                spectators.pop(spectators.index(user_display_name))
+                found = True
+                database.save()
+                await response(interaction, f'You are no longer spectating {spectated}')
+    if not found:
+        await response(interaction, f'You are not spectating anyone!')
 
 @client.tree.command()
-async def game(interaction: discord.Interaction):
+async def game(interaction: discord.Interaction, day_category: discord.CategoryChannel, night_category: discord.CategoryChannel, town_square_channel: discord.VoiceChannel):
     """Gives storyteller buttons to manage the game with"""
+    guild = interaction.guild
+    database = Database(guild)
     user = interaction.user
     game_owner = user.display_name
-    if game_owner in DATABASES:
-        await interaction.response.send_message(f'You already have a running game, first quit the other game', ephemeral=True, delete_after=5)
+    if game_owner in database.games:
+        await response(interaction, f'You already have a running game, first quit the other game')
         return
-    database = Database(game_owner)
-    DATABASES[game_owner] = database
+    
     view = GameControls(timeout=None)
-    database.view_id = view.id
-    guild = interaction.guild
+    game_chat_channel = discord.utils.get(day_category.text_channels, name='game-chat')
+    database.games[game_owner] = {
+        "view_id": view.id, 
+        "day_category": [day_category.id, day_category.name], 
+        "night_category": [night_category.id, night_category.name], 
+        "game_chat_channel": [game_chat_channel.id, game_chat_channel.name],
+        "town_square_channel": [town_square_channel.id, town_square_channel.name]
+        }
     storyteller_role = get_storyteller_role(guild)
 
     if not storyteller_role:
@@ -66,41 +121,27 @@ async def game(interaction: discord.Interaction):
             logger.info(f'Successfully added storyteller role to {game_owner}')
         except discord.errors.Forbidden:
             logger.error(f'Could not add storyteller role to {game_owner} because of lacking permissions, add role manually')
-            await interaction.response.send_message(f'Could not add Storyteller role to {game_owner}, probably because the user has a higher tier role. Please add manually and try again', ephemeral=True, delete_after=5)
-            DATABASES.pop(game_owner)
+            await response(interaction, f'Could not add Storyteller role to {game_owner}, probably because the user has a higher tier role. Please add manually and try again')
+            database.games.pop(game_owner)
             return
+        
+    database.save()
     await interaction.response.send_message(f"Game commands for {game_owner}'s game", view=view)
 
 @client.tree.command()
-async def link_to_game(interaction: discord.Interaction, channel_with_players: discord.VoiceChannel, day_category: discord.CategoryChannel, night_category: discord.CategoryChannel):
-    """Links players in a channel to your game and link a day and night category to your game"""
-    command_caller = interaction.user.display_name
-    if command_caller not in DATABASES:
-        await interaction.response.send_message(f"You do not have an active game, start one first with /game", ephemeral=True, delete_after=5)
+async def stop_game(interaction: discord.Interaction):
+    """Stop game if you have any game running, only use this if game controls no longer work"""
+    database = Database(interaction.guild)
+    game_owner = interaction.user
+    game_owner_name = game_owner.display_name
+
+    if game_owner_name in database.games:
+        database.games.pop(game_owner_name)
+        await response(interaction, f'Ended your game, you can now start a new game')
+        database.save()
         return
-    database: Database = DATABASES.get(command_caller)
-    member_count = len(channel_with_players.members)
-    for member in channel_with_players.members:
-        logger.info(f"Linking {member.display_name} to {command_caller}'s game")
-        database.players[member.display_name] = member.id
-    logger.info(f'Linked {member_count} players')
-
-    logger.info(f'Linking "{day_category.name}" (day) to {database.game_name}')
-    database.day_category = {"name": day_category.name, "id": day_category.id, "children": [(channel.name, channel.id) for channel in day_category.voice_channels]}
-
-    logger.info(f'Linking "{night_category.name}" (night) to {database.game_name}')
-    database.night_category = {"name": night_category.name, "id": night_category.id, "children": [(channel.name, channel.id) for channel in night_category.voice_channels]}
-
-    logger.info('Finding and adding Town Square channel to database')
-    database.find_town_square()
-    logger.info(f'Got: {database.town_square[0]} as a result')
-
-    database.linked_objects = True
-    database.game_chat_channel = discord.utils.get(day_category.text_channels, name='game-chat')
-    logger.info(f'Saving database to: {database.path}')
-    database.save_to_file()
-
-    await interaction.response.send_message(f'Linked {member_count} players, "{day_category.name}" category as day and "{night_category.name}" category as night to your game', ephemeral=True, delete_after=5)
+    
+    await response(interaction, f'No game found for {game_owner_name}, you can freely start a new game')
 
 @client.tree.command()
 async def create_game_channels(interaction: discord.Interaction, amount_of_players: int):
@@ -129,16 +170,19 @@ async def create_game_channels(interaction: discord.Interaction, amount_of_playe
 {dict_to_str(channels_to_be_created)}
 """
     logger.debug(response_message)
-    await interaction.response.send_message(response_message, ephemeral=True, delete_after=10)
+    await response(interaction, response_message)
 
     guild = interaction.guild
-    day_category = await guild.create_category(day_category_name)
+
+    overwrites = {discord.utils.get(guild.roles, name='BotC-bot'): discord.PermissionOverwrite(view_channel=True, manage_channels=True)}
+
+    day_category = await guild.create_category(day_category_name, overwrites=overwrites)
     logger.info(f"Created {day_category_name} on {guild.name} for {command_caller}'s game")
 
     for channel_name in random_day_channel_names:
-        await day_category.create_voice_channel(channel_name)
+        await day_category.create_voice_channel(channel_name, overwrites=overwrites)
         logger.info(f"Created {channel_name} in {day_category_name}")
-    await day_category.create_text_channel('game-chat')
+    await day_category.create_text_channel('game-chat', overwrites=overwrites)
     logger.info(f'Created "game-chat" in {day_category_name}')
 
 
@@ -159,7 +203,30 @@ async def create_game_channels(interaction: discord.Interaction, amount_of_playe
 @client.tree.command()
 async def delete_game_channels(interaction: discord.Interaction, day_category: discord.CategoryChannel, night_category: discord.CategoryChannel):
     """Deletes game channels from a closed game"""
-    await interaction.response.send_message(f"Deleting all channels in {day_category.name} and {night_category.name}...", ephemeral=True, delete_after=10)
+    day_category_overwrites = day_category.overwrites
+    night_category_overwrites = night_category.overwrites
+
+    allowed_to_delete_day = False
+    for role in day_category_overwrites:
+        if role.name == 'BotC-bot':
+            allowed_to_delete_day = True
+            break
+
+    if not allowed_to_delete_day:
+        await response(interaction, f'The category {day_category.name} was not made by this bot, will not delete anything.')
+        return
+    
+    allowed_to_delete_night = False
+    for role in night_category_overwrites:
+        if role.name == 'BotC-bot':
+            allowed_to_delete_night = True
+            break
+
+    if not allowed_to_delete_night:
+        await response(interaction, f'The category {night_category.name} was not made by this bot, will not delete anything.')
+        return
+    
+    await response(interaction, f"Deleting all channels in {day_category.name} and {night_category.name}...")
     for category in [day_category, night_category]:
         for channel in category.channels:
             logger.info(f'Deleting {channel.name} from {category.name}')
@@ -170,8 +237,58 @@ async def delete_game_channels(interaction: discord.Interaction, day_category: d
 @client.tree.command()
 async def clear_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Clears all messages from the channel"""
-    await interaction.response.send_message(f"Purging {channel.name}...", ephemeral=True, delete_after=10)
+    channel_overwrites = channel.overwrites
+    allowed_to_clear_channel = False
+
+    for role in channel_overwrites:
+        if role.name == 'BotC-bot':
+            allowed_to_clear_channel = True
+            break
+
+    if not allowed_to_clear_channel:
+        await response(interaction, f'Channel {channel.name} was not created by this bot, will not clear this channel')
+        return
+
+    await response(interaction, f"Purging {channel.name}...")
     logger.info(f'Clearing {channel.name} of messages')
     await channel.purge()
+
+@client.tree.command()
+async def st(interaction: discord.Interaction):
+    """Gives you the Storyteller role or removes it if you already have it"""
+    user = interaction.user
+    guild = interaction.guild
+    database = Database(guild)
+    storyteller_role_id = database.storyteller_role_id
+    if storyteller_role_id:
+        storyteller_role = guild.get_role(storyteller_role_id)
+    else:
+        storyteller_role = get_storyteller_role(guild)
+    user_has_story_teller_role = check_if_user_has_story_teller_role(interaction)
+    if user_has_story_teller_role:
+        await response(interaction, "You already had the Storyteller role, removing role now")
+        try:
+            logger.info(f'User {user.display_name} already has the Storryteller role, removing it now')
+            await user.remove_roles(storyteller_role)
+            logger.info(f'Successfully removed storyteller role from {user.display_name}')
+        except discord.Forbidden:
+            await response(interaction, 'Bot is not allowed to remove Storyteller role from you, ask a moderator')
+            logger.error(f'Could not remove Storyteller role from {user.display_name} due to lack of authorization')
+        return
+    try:
+        logger.info(f'Giving Storyteller role to {user.display_name}')
+        await user.add_roles(storyteller_role)
+        logger.info(f'Successfully added Storyteller role to {user.display_name}')
+        await response(interaction, 'Successfully gave you Storyteller role')
+    except discord.Forbidden:
+        await response(interaction, 'Bot is not allowed to give you Storyteller role, ask a moderator')
+        logger.error(f'Could not add Storyteller role to {user.display_name} due to lack of authorization')
+
+@client.tree.command()
+async def help(interaction: discord.Interaction, page: app_commands.Range[int, 1, 2]):
+    """Lists all commands with explanation about what they do, page 1 or 2"""
+    index = page -1
+    await interaction.response.send_message(DOCUMENTATION_STRINGS[index], ephemeral=True, delete_after=180)
+
 
 client.run(TOKEN)
