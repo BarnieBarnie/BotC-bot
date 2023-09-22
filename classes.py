@@ -5,6 +5,7 @@ import time
 from utils import is_owner
 from discord import app_commands
 from database import Database
+from global_vars import TIMERS
 
 
 class Timer:
@@ -51,11 +52,13 @@ class GameControls(discord.ui.View):
         guild = interaction.guild
         database = Database(guild)
         game_owner = interaction.user.display_name
+        logger.info(f"{game_owner} clicked Day button")
         game: dict = database.games[game_owner]
         button.label = 'Moving players...'
         await interaction.response.edit_message(view=self)
         town_square_channel = guild.get_channel(game["town_square_channel"][0])
         night_category = guild.get_channel(game["night_category"][0])
+        logger.info(f'Moving players from {night_category.name} to {town_square_channel.name}')
         for channel in night_category.voice_channels:
             channel_name = channel.name
             if channel_name == town_square_channel.name:
@@ -64,6 +67,7 @@ class GameControls(discord.ui.View):
                 if member.display_name == game_owner:
                     continue
                 await member.move_to(town_square_channel)
+                logger.info(f'Moved {member.display_name} to {town_square_channel.name}')
 
         button.label = 'Day'
         await interaction.followup.edit_message(interaction.message.id, view=self)
@@ -73,6 +77,7 @@ class GameControls(discord.ui.View):
         if not is_owner(interaction, button.view.id):
             return
         game_owner = interaction.user.display_name
+        logger.info(f'{game_owner} clicked Night button')
         guild = interaction.guild
         database = Database(guild)
         game = database.games[game_owner]
@@ -81,10 +86,13 @@ class GameControls(discord.ui.View):
         town_square_channel = guild.get_channel(game["town_square_channel"][0])
         night_category = guild.get_channel(game["night_category"][0])
         night_channels = [channel for channel in night_category.voice_channels]
+        logger.info(f'Moving players from {town_square_channel.name} to random channels in {night_category.name}')
         for member in town_square_channel.members:
             if member.display_name == game_owner:
                 continue
-            await member.move_to(night_channels.pop(0))
+            channel_to_move_to = night_channels.pop(0)
+            await member.move_to(channel_to_move_to)
+            logger.info(f'Moved {member.display_name} to {channel_to_move_to.name}')
 
         button.label = 'Night'
         await interaction.followup.edit_message(interaction.message.id, view=self)
@@ -95,12 +103,14 @@ class GameControls(discord.ui.View):
         if not is_owner(interaction, button_view.id):
             return
         game_owner = interaction.user.display_name
+        logger.info(f'{game_owner} clicked Cancel timer button')
         guild = interaction.guild
         database = Database(guild)
-        timer: Timer = database.timers.get(game_owner)
+        timer: Timer = TIMERS.get(game_owner)
         if not timer:
             button.label = 'No timer found!'
             await interaction.response.edit_message(view=self)
+            logger.warning(f'No timer found for {game_owner}')
             time.sleep(3)
             button.label = 'Cancel timer'
             await interaction.followup.edit_message(interaction.message.id, view=self)
@@ -120,6 +130,7 @@ class GameControls(discord.ui.View):
             return
         game_owner = interaction.user
         game_owner_name = game_owner.display_name
+        logger.info(f'{game_owner_name} clicked Quit game')
         guild = interaction.guild
         database = Database(guild)
         storyteller_role = guild.get_role(database.storyteller_role_id)
@@ -132,6 +143,7 @@ class GameControls(discord.ui.View):
         button_view.clear_items()
         database.games.pop(game_owner_name)
         await interaction.response.edit_message(content='Game ended', view=self, delete_after=10)
+        logger.info(f'{game_owner_name} game ended successfully')
 
     @discord.ui.select(min_values=1, max_values=1, options=[discord.SelectOption(label=f'{i*0.5} minutes') for i in range(4,27)], placeholder='Select time players have until vote')
     async def timer(self, interaction: discord.Interaction, select: discord.ui.Select):
@@ -140,16 +152,20 @@ class GameControls(discord.ui.View):
             return
         game_owner = interaction.user
         game_owner_name = game_owner.display_name
+        if game_owner_name in TIMERS:
+            logger.warning(f'{game_owner_name} already has a running timer!')
+            await interaction.response.send_message(f'You already have a running timer! Cancel that one first!', ephemeral=True, delete_after=10)
+            return
         guild = interaction.guild
         selected_value = select.values[0]
         logger.info(f"{game_owner_name} started a timer of {selected_value} minutes")
         time_to_sleep = float(selected_value.replace(' minutes', '')) * 60
-        logger.info(f"I got {time_to_sleep}:.2f seconds to sleep")
+        logger.info(f"I got {time_to_sleep:.2f} seconds to sleep")
         database = Database(guild)
         game = database.games[game_owner_name]
-        await interaction.response.send_message(f'Will return players to Town Square after {selected_value} minutes', ephemeral=True, delete_after=3)
+        await interaction.response.send_message(f'Will return players to Town Square after {selected_value} minutes', ephemeral=True, delete_after=10)
         timer = Timer(time_to_sleep, guild.get_channel(game["game_chat_channel"][0]), guild.get_channel(game["day_category"][0]), game_owner, guild.get_channel(game["town_square_channel"][0]))
-        database.timers[game_owner] = timer
+        TIMERS[game_owner_name] = timer
         children = select_view.children
         for child in children:
             if isinstance(child, discord.ui.Select):

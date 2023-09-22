@@ -262,3 +262,5 @@ ROOMS = [
 	"Wiring closet"
 ]
 ROOMS_COUNT = len(ROOMS)
+
+TIMERS = {}

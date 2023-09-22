@@ -36,17 +36,21 @@ async def on_ready():
 @client.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
     database = Database(member.guild)
-    if member.display_name in database.linked_players:
-        slaves = database.linked_players[member.display_name]
-        for slave_name in slaves:
-            for member in before.channel.members:
-                if member.display_name == slave_name:
-                    logger.info(f"{slave_name} was in same channel as {member.display_name} moving {slave_name} to {after.channel.name}")
-                    await member.move_to(after.channel)
-                    return
-            logger.info(f"{slave_name} was not in same channel as {member.display_name} moving {slave_name} to {after.channel.name}")
-            slave = member.guild.get_member_named(slave_name)
-            await slave.move_to(after.channel)
+    try:
+        if member.display_name in database.linked_players:
+            spectators = database.linked_players[member.display_name]
+            for spectator_name in spectators:
+                for member in before.channel.members:
+                    if member.display_name == spectator_name:
+                        logger.info(f"{spectator_name} was in same channel as {member.display_name} moving {spectator_name} to {after.channel.name}")
+                        await member.move_to(after.channel)
+                        return
+                logger.info(f"{spectator_name} was not in same channel as {member.display_name} moving {spectator_name} to {after.channel.name}")
+                slave = member.guild.get_member_named(spectator_name)
+                await slave.move_to(after.channel)
+    except AttributeError:
+        logger.error(f'Got error while trying to move {spectator_name} to {member.display_name} because {member.display_name} most likely left all voice channels or just joined again')
+
 
 @client.tree.command()
 async def spectate(interaction: discord.Interaction, user_to_spectate: discord.Member):
@@ -54,11 +58,20 @@ async def spectate(interaction: discord.Interaction, user_to_spectate: discord.M
     database = Database(interaction.guild)
     user = interaction.user
     user_to_spectate_name = user_to_spectate.display_name
-    for master, slaves in database.linked_players.items():
-        for slave in slaves:
-            if slave == user.display_name:
-                await response(interaction, f'You are already spectating {master}! First unlink from {master}!')
+    logger.info(f"{user.display_name} called /spectate {user_to_spectate_name}")
+
+    if user.display_name in database.linked_players and user_to_spectate_name in database.linked_players[user.display_name]:
+        logger.error(f'Infinite spectate loop detected, {user_to_spectate_name} is spectating {user.display_name} so {user.display_name} cannot spectate {user_to_spectate_name} aswell')
+        await response(interaction, f'{user_to_spectate_name} is spectating you, you cannot spectate eachother at the same time, ask {user_to_spectate_name} to call /stop_spectate')
+        return
+
+    for spectated, spectators in database.linked_players.items():
+        for spectator in spectators:
+            if spectator == user.display_name:
+                logger.warning(f"{user.display_name} is already spectating {spectated}")
+                await response(interaction, f'You are already spectating {spectated}! First unlink from {spectated}!')
                 return
+            
     if user_to_spectate_name in database.linked_players:
         database.linked_players[user_to_spectate_name].append(user.display_name)
         database.save()
@@ -67,6 +80,7 @@ async def spectate(interaction: discord.Interaction, user_to_spectate: discord.M
 
     database.linked_players[user_to_spectate_name] = [user.display_name]
     database.save()
+    logger.info(f'{user.display_name} is now spectating {user_to_spectate_name}')
     await response(interaction, f'You are now spectating {user_to_spectate_name}, you will follow them around until you run /stop_spectate')
 
 @client.tree.command()
@@ -74,6 +88,7 @@ async def stop_spectate(interaction: discord.Interaction):
     """Unlink yourself from other members, you no longer move where they move"""
     database = Database(interaction.guild)
     user_display_name = interaction.user.display_name
+    logger.info(f'{user_display_name} called /stop_spectate')
     found = False
     for spectated, spectators in database.linked_players.items():
         for spectator in spectators:
@@ -82,8 +97,10 @@ async def stop_spectate(interaction: discord.Interaction):
                 found = True
                 database.save()
                 await response(interaction, f'You are no longer spectating {spectated}')
+                logger.info(f'Unlinked {user_display_name} from {spectated}')
     if not found:
         await response(interaction, f'You are not spectating anyone!')
+        logger.warning(f'{user_display_name} was not spectating anyone')
 
 @client.tree.command()
 async def game(interaction: discord.Interaction, day_category: discord.CategoryChannel, night_category: discord.CategoryChannel, town_square_channel: discord.VoiceChannel):
@@ -92,8 +109,10 @@ async def game(interaction: discord.Interaction, day_category: discord.CategoryC
     database = Database(guild)
     user = interaction.user
     game_owner = user.display_name
+    logger.info(f'{game_owner} called /game "{day_category.name}" "{night_category.name}" "{town_square_channel.name}"')
     if game_owner in database.games:
         await response(interaction, f'You already have a running game, first quit the other game')
+        logger.warning(f'{game_owner} already has a running game')
         return
     
     view = GameControls(timeout=None)
@@ -134,6 +153,7 @@ async def stop_game(interaction: discord.Interaction):
     database = Database(interaction.guild)
     game_owner = interaction.user
     game_owner_name = game_owner.display_name
+    logger.info(f'{game_owner_name} called /stop_game')
 
     if game_owner_name in database.games:
         database.games.pop(game_owner_name)
@@ -147,7 +167,7 @@ async def stop_game(interaction: discord.Interaction):
 async def create_game_channels(interaction: discord.Interaction, amount_of_players: int):
     """Creates channels for a new game"""
     command_caller = interaction.user.display_name
-    logger.info(f'{command_caller} called create channels')
+    logger.info(f'{command_caller} called /create_game_channels {amount_of_players}')
 
     night_category_name = f"{command_caller}'s Night"
     random_night_channel_names = pick_random_channel_names(amount_of_players)
@@ -205,6 +225,7 @@ async def delete_game_channels(interaction: discord.Interaction, day_category: d
     """Deletes game channels from a closed game"""
     day_category_overwrites = day_category.overwrites
     night_category_overwrites = night_category.overwrites
+    logger.info(f'{interaction.user.display_name} called /delete_game_channels "{day_category.name}" "{night_category.name}"')
 
     allowed_to_delete_day = False
     for role in day_category_overwrites:
@@ -214,6 +235,7 @@ async def delete_game_channels(interaction: discord.Interaction, day_category: d
 
     if not allowed_to_delete_day:
         await response(interaction, f'The category {day_category.name} was not made by this bot, will not delete anything.')
+        logger.warning(f'The category {day_category.name} was not made by this bot, will not delete anything')
         return
     
     allowed_to_delete_night = False
@@ -224,9 +246,11 @@ async def delete_game_channels(interaction: discord.Interaction, day_category: d
 
     if not allowed_to_delete_night:
         await response(interaction, f'The category {night_category.name} was not made by this bot, will not delete anything.')
+        logger.warning(f'The category {night_category.name} was not made by this bot, will not delete anything')
         return
     
     await response(interaction, f"Deleting all channels in {day_category.name} and {night_category.name}...")
+    logger.info(f"Deleting all channels in {day_category.name} and {night_category.name}...")
     for category in [day_category, night_category]:
         for channel in category.channels:
             logger.info(f'Deleting {channel.name} from {category.name}')
@@ -239,6 +263,7 @@ async def clear_channel(interaction: discord.Interaction, channel: discord.TextC
     """Clears all messages from the channel"""
     channel_overwrites = channel.overwrites
     allowed_to_clear_channel = False
+    logger.info(f'{interaction.user.display_name} called /clean_channel "{channel.name}"')
 
     for role in channel_overwrites:
         if role.name == 'BotC-bot':
@@ -247,6 +272,7 @@ async def clear_channel(interaction: discord.Interaction, channel: discord.TextC
 
     if not allowed_to_clear_channel:
         await response(interaction, f'Channel {channel.name} was not created by this bot, will not clear this channel')
+        logger.warning(f'Channel {channel.name} was not created by this bot, will not clear this channel')
         return
 
     await response(interaction, f"Purging {channel.name}...")
@@ -257,6 +283,7 @@ async def clear_channel(interaction: discord.Interaction, channel: discord.TextC
 async def st(interaction: discord.Interaction):
     """Gives you the Storyteller role or removes it if you already have it"""
     user = interaction.user
+    logger.info(f'{user.display_name} called /st')
     guild = interaction.guild
     database = Database(guild)
     storyteller_role_id = database.storyteller_role_id
@@ -287,6 +314,7 @@ async def st(interaction: discord.Interaction):
 @client.tree.command()
 async def help(interaction: discord.Interaction, page: app_commands.Range[int, 1, 2]):
     """Lists all commands with explanation about what they do, page 1 or 2"""
+    logger.info(f'{interaction.user.display_name} called /help {page}')
     index = page -1
     await interaction.response.send_message(DOCUMENTATION_STRINGS[index], ephemeral=True, delete_after=180)
 
