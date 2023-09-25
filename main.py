@@ -40,8 +40,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         if member.display_name in database.linked_players:
             spectators = database.linked_players[member.display_name]
             for spectator_name in spectators:
-                for member in before.channel.members:
-                    if member.display_name == spectator_name:
+                for channel_member in before.channel.members:
+                    if channel_member.display_name == spectator_name:
                         logger.info(f"{spectator_name} was in same channel as {member.display_name} moving {spectator_name} to {after.channel.name}")
                         await member.move_to(after.channel)
                         return

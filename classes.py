@@ -42,6 +42,7 @@ class Timer:
                 if member == self.user_to_ignore:
                     continue
                 await member.move_to(self.channel_to_move_to)
+        TIMERS.pop(self.user_to_ignore.display_name)
 
 class GameControls(discord.ui.View):
 
@@ -118,6 +119,7 @@ class GameControls(discord.ui.View):
         button.label = 'Timer cancelled!'
         await interaction.response.edit_message(view=self)
         await timer.cancel()
+        TIMERS.pop(game_owner)
         time.sleep(3)
         button.label = 'Cancel timer'
         await interaction.followup.edit_message(interaction.message.id, view=self)
@@ -142,6 +144,7 @@ class GameControls(discord.ui.View):
             logger.error(f'Could not remove storyteller role from {game_owner_name} because user probably has higher privileges')
         button_view.clear_items()
         database.games.pop(game_owner_name)
+        database.save()
         await interaction.response.edit_message(content='Game ended', view=self, delete_after=10)
         logger.info(f'{game_owner_name} game ended successfully')
 
