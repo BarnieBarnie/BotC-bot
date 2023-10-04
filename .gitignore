@@ -162,3 +162,5 @@ cython_debug/
 token.txt
 databases/
 tomake.md
+creds.txt
+terraform/
