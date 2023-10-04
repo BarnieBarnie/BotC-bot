@@ -21,9 +21,10 @@ class Database:
         self.linked_players = self.dict.get('linked_players')
 
     def save(self):
-        self.dict["games"] = self.games
-        self.dict["linked_players"] = self.linked_players
-        self.dict["storyteller_role_id"] = self.storyteller_role_id 
+        if self.path.exists():
+            self.dict["games"] = self.games
+            self.dict["linked_players"] = self.linked_players
+            self.dict["storyteller_role_id"] = self.storyteller_role_id 
         with open(self.path, 'w') as f:
             json.dump(self.dict, f, indent=2)
 
