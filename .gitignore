@@ -164,3 +164,4 @@ databases/
 tomake.md
 creds.txt
 terraform/
+init.sh
