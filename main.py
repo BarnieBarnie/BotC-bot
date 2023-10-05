@@ -36,21 +36,26 @@ async def on_ready():
 @client.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
     database = Database(member.guild)
-    try:
-        if member.display_name in database.linked_players:
-            spectators = database.linked_players[member.display_name]
-            for spectator_name in spectators:
+    if not after.channel:
+        return
+    if member.display_name in database.linked_players:
+        spectators = database.linked_players[member.display_name]
+        for spectator_name in spectators:
+            if before.channel:
                 for channel_member in before.channel.members:
                     if channel_member.display_name == spectator_name:
                         logger.info(f"{spectator_name} was in same channel as {member.display_name} moving {spectator_name} to {after.channel.name}")
-                        await member.move_to(after.channel)
+                        try:
+                            await member.move_to(after.channel)
+                        except Exception as e:
+                            logger.error(f'While trying to move {member.display_name} to {after.channel.name} got error:\n{e}')
                         return
-                logger.info(f"{spectator_name} was not in same channel as {member.display_name} moving {spectator_name} to {after.channel.name}")
-                slave = member.guild.get_member_named(spectator_name)
-                await slave.move_to(after.channel)
-    except AttributeError:
-        logger.error(f'Got error while trying to move {spectator_name} to {member.display_name} because {member.display_name} most likely left all voice channels or just joined again')
-
+            logger.info(f"{spectator_name} was not in same channel as {member.display_name} moving {spectator_name} to {after.channel.name}")
+            spectator = member.guild.get_member_named(spectator_name)
+            try:
+                await spectator.move_to(after.channel)
+            except Exception as e:
+                logger.error(f'While trying to move {spectator_name} to {after.channel.name} got error:\n{e}')
 
 @client.tree.command()
 async def spectate(interaction: discord.Interaction, user_to_spectate: discord.Member):
@@ -59,6 +64,10 @@ async def spectate(interaction: discord.Interaction, user_to_spectate: discord.M
     user = interaction.user
     user_to_spectate_name = user_to_spectate.display_name
     logger.info(f"{user.display_name} called /spectate {user_to_spectate_name}")
+    if user.display_name == user_to_spectate_name:
+        logger.error(f"{user.display_name} tried to spectate him or herself!")
+        await response(interaction, f'You cannot spectate yourself!')
+        return
 
     if user.display_name in database.linked_players and user_to_spectate_name in database.linked_players[user.display_name]:
         logger.error(f'Infinite spectate loop detected, {user_to_spectate_name} is spectating {user.display_name} so {user.display_name} cannot spectate {user_to_spectate_name} aswell')
